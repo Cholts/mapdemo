@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archaeological Sites of Rome: Interactive Map</title>
+    <!-- Tailwind CSS CDN for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS for map styling -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    <style>
+        /* Custom styles for the map components */
+        body {
+            font-family: "Inter", sans-serif; /* Using Inter font as per guidelines */
+            background-color: #f0f4f8; /* Light background for a clean look */
+            color: #334155; /* Darker text for readability */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Main container for the application */
+        #app-container {
+            background-color: #ffffff;
+            border-radius: 12px; /* Rounded corners for the main container */
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+            margin: 20px;
+            width: 100%;
+            max-width: 1400px; /* Max width for larger screens */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #10b981; /* Green tone for headings */
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem; /* Larger font for main title */
+            font-weight: 700;
+        }
+
+        /* Map container for Leaflet */
+        #mapid {
+            height: 600px; /* Increased height for the main map */
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        /* Back button styling */
+        #back-button {
+            background-color: #3b82f6; /* Blue button */
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px; /* Rounded corners */
+            cursor: pointer;
+            margin-bottom: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        #back-button:hover {
+            background-color: #2563eb; /* Darker blue on hover */
+            transform: translateY(-2px);
+        }
+
+        #district-view h2 {
+            text-align: center;
+            color: #059669; /* Green tone for district name */
+            margin-bottom: 30px;
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        /* Styling for dig details display */
+        #dig-details {
+            display: none; /* Hidden by default */
+            background-color: #f0fdf4; /* Very light green background */
+            border: 1px solid #bbf7d0; /* Light green border */
+            border-radius: 8px; /* Rounded corners */
+            padding: 25px;
+            margin-top: 30px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+            animation: fadeIn 0.5s ease-out; /* Fade-in animation */
+        }
+        #dig-details h3 {
+            color: #065f46; /* Dark green for detail title */
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        #dig-details p {
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: #374151;
+        }
+        #dig-details strong {
+            color: #14532d; /* Even darker green for strong text */
+            font-weight: 600;
+        }
+
+        /* Keyframe animation for fade-in effect */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            #app-container {
+                padding: 20px;
+                margin: 10px;
+            }
+            #back-button {
+                padding: 10px 15px;
+                font-size: 0.9rem;
+            }
+            #district-view h2 {
+                font-size: 1.75rem;
+            }
+            #dig-details h3 {
+                font-size: 1.5rem;
+            }
+            #dig-details p {
+                font-size: 1rem;
+            }
+            #mapid {
+                height: 400px; /* Adjust map height for smaller screens */
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.75rem;
+            }
+            #app-container {
+                padding: 15px;
+                margin: 5px;
+            }
+            #mapid {
+                height: 300px; /* Further adjust map height for very small screens */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <h1>Archaeological Sites of Rome: Interactive Map</h1>
+
+        <!-- Main Leaflet Map Container -->
+        <div id="mapid"></div>
+
+        <!-- Back button (initially hidden, shown when zoomed into a district) -->
+        <button id="back-button" class="hidden">← Back to Full Map</button>
+
+        <!-- Dig details for a selected pinpoint will be loaded here by JavaScript -->
+        <div id="dig-details"></div>
+    </div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <script>
+        // Archaeological data structured as a JavaScript object for easy access
+        // Each site now includes a 'municipio' property for mapping.
+        const archaeologicalData = {
+            "Regione I – Roma Antica": {
+                coords: [41.8902, 12.4922], // Roman Forum/Colosseum area
+                sites: [
+                    {"Year(s)": "2001–2002", "Site / Project": "Michaelangelo Garden & Capitolium excavations", "Director(s)": "(authors BCAR 2001–02)", "Description": "Bronze‑age and archaic stratigraphy at Capitol Hill", "lat": 41.8932, "lng": 12.4828, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2003–2005", "Site / Project": "Fori Imperiali – Forum of Trajan area", "Director(s)": "Roberto Meneghini, Claudio Parisi Presicce", "Description": "Excavations in Basilica Ulpia and adjacent structures", "lat": 41.8958, "lng": 12.4842, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2006", "Site / Project": "New finds near Forum Romanum access point", "Director(s)": "(BCAR author)", "Description": "Urban rescue excavations during modern utilities works", "lat": 41.8920, "lng": 12.4860, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2007–2010", "Site / Project": "Mausoleum of Augustus", "Director(s)": "Nadia Agnoli et al.", "Description": "Stratigraphic investigations around Mausoleum area", "lat": 41.9050, "lng": 12.4760, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2008–2011", "Site / Project": "Sepolcreto degli Scipioni", "Director(s)": "Rita Volpe et al.", "Description": "Tomb area investigations at Aventine hill", "lat": 41.8840, "lng": 12.4850, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2009–2012", "Site / Project": "Domus Tiberiana research", "Director(s)": "BCAR regional team", "Description": "Survey and minor excavations in Palatine subarea", "lat": 41.8900, "lng": 12.4880, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2010–2013", "Site / Project": "Trajan’s Markets museum expansion", "Director(s)": "Lucrezia Ungaro et al.", "Description": "Excavation of cisterns, amphora storage systems", "lat": 41.8965, "lng": 12.4845, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2011–2013", "Site / Project": "Largo Argentina archaeological documentation", "Director(s)": "Marina Mattei", "Description": "Area sacra excavations", "lat": 41.8950, "lng": 12.4760, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2013", "Site / Project": "Stadium of Domitian", "Director(s)": "Giovanni Caruso, Stefania Pergola", "Description": "Restoration-related finds at the Stadium", "lat": 41.8990, "lng": 12.4730, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2020–2021", "Site / Project": "Reopening of Mausoleum and square renovation", "Director(s)": "Sovraintendenza Capitolina, Presicce", "Description": "Archaeological monitoring during public works", "lat": 41.9045, "lng": 12.4765, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione II – Celio & San Giovanni": {
+                coords: [41.8872, 12.5050], // Lateran Basilica area
+                sites: [
+                    {"Year(s)": "2002–2003", "Site / Project": "Celio hill minor stratigraphy", "Director(s)": "BCAR field team", "Description": "Minor excavations during utility work", "lat": 41.8860, "lng": 12.5000, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2004–2006", "Site / Project": "Church of Santo Stefano Rotondo – archaeological survey", "Director(s)": "(BCAR author)", "Description": "Medieval-Roman phases below church site", "lat": 41.8865, "lng": 12.4970, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2006", "Site / Project": "Metro C test trench near Celio", "Director(s)": "Elisabetta Bianchi", "Description": "Rescue archaeology during tunnel works", "lat": 41.8880, "lng": 12.5020, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2008–2010", "Site / Project": "Villa near Celio hill restoration", "Director(s)": "BCAR regional team", "Description": "Urban excavation of villa remains", "lat": 41.8850, "lng": 12.5010, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2010–2012", "Site / Project": "Santa Croce in Gerusalemme area interventions", "Director(s)": "BCAR archaeological office", "Description": "Survey of Roman-period tombs", "lat": 41.8920, "lng": 12.5150, "municipio": "Municipio Roma VII"},
+                    {"Year(s)": "2012–2014", "Site / Project": "Via Appia regional rescue digs", "Director(s)": "Local BCAR team", "Description": "Road corridor excavations", "lat": 41.8750, "lng": 12.5100, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2015–2017", "Site / Project": "San Giovanni adjacent aqueduct infrastructure", "Director(s)": "Local BCAR team", "Description": "Roman aqueduct remains documented", "lat": 41.8875, "lng": 12.5080, "municipio": "Municipio Roma VII"},
+                    {"Year(s)": "2018", "Site / Project": "Metro C test excavation near Porta Capena", "Director(s)": "Elisabetta Bianchi et al.", "Description": "Finds of Roman tombs and civic structures", "lat": 41.8850, "lng": 12.4920, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2019–2020", "Site / Project": "Early Christian basilica evidence near Celio hill", "Director(s)": "Local site team", "Description": "Structural and mosaic documentation", "lat": 41.8840, "lng": 12.4980, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2021", "Site / Project": "Modern construction rescue – Celio", "Director(s)": "(BCAR author)", "Description": "Urban intervention recovery", "lat": 41.8870, "lng": 12.4990, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione III – Colle Oppio & Terme di Traiano": {
+                coords: [41.8900, 12.5000], // Baths of Trajan area
+                sites: [
+                    {"Year(s)": "2001–2003", "Site / Project": "Baths of Trajan excavation, north sector", "Director(s)": "BCAR authors 2001–03", "Description": "Structural investigations in Terme di Traiano", "lat": 41.8930, "lng": 12.5020, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2004", "Site / Project": "Trajan bath exedra restoration", "Director(s)": "Rita Volpe, Federica Rossi", "Description": "Excavation and restoration of exedra structure", "lat": 41.8925, "lng": 12.5015, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2005–2007", "Site / Project": "Oppio hill survey", "Director(s)": "BCAR regional survey team", "Description": "Surface finds and mapping project", "lat": 41.8890, "lng": 12.5030, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2010–2013", "Site / Project": "Southwest corner excavations", "Director(s)": "Giovanni Caruso et al.", "Description": "Colle Oppio site excavations", "lat": 41.8880, "lng": 12.4980, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2012", "Site / Project": "Minor tomb remains near Oppio", "Director(s)": "Local team", "Description": "Rescue recovery of funerary objects", "lat": 41.8895, "lng": 12.4990, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2013–2014", "Site / Project": "Exedra S–O restoration continued", "Director(s)": "Volpe & Rossi", "Description": "Restoration scavi at exedra corner", "lat": 41.8920, "lng": 12.5010, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2015", "Site / Project": "Thermal complex stratigraphy studies", "Director(s)": "BCAR authors", "Description": "Investigation of original bath phases", "lat": 41.8910, "lng": 12.5005, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2016–2018", "Site / Project": "Metro C tunneled sampling near Oppio", "Director(s)": "Elisabetta Bianchi", "Description": "Archaeological sampling for metro project", "lat": 41.8905, "lng": 12.5040, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2019", "Site / Project": "Fori Imperiali edge interfacing", "Director(s)": "Regional BCAR team", "Description": "Excavation relating to Fori Imperiali perimeter", "lat": 41.8940, "lng": 12.4900, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2021–2022", "Site / Project": "Trajan’s Baths site survey", "Director(s)": "BCAR monitoring team", "Description": "Archaeological mapping during site improvements", "lat": 41.8935, "lng": 12.5025, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione IV – Aventino/Testaccio": {
+                coords: [41.8790, 12.4780], // Testaccio Market area
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "Via di S. Prisca – structural survey", "Director(s)": "BCAR field office", "Description": "Late antique wall sequences documented", "lat": 41.8820, "lng": 12.4800, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2002–2004", "Site / Project": "Monte Testaccio core-sampling", "Director(s)": "Rita Volpe, Marco Milanese", "Description": "Amphora fill studies using geoarchaeology", "lat": 41.8750, "lng": 12.4750, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2005", "Site / Project": "Via di S. Sabina – underground chambers", "Director(s)": "Marina Mattei", "Description": "Hypogeum rooms investigated beneath medieval complex", "lat": 41.8845, "lng": 12.4820, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2006", "Site / Project": "Testaccio — Piazza Testaccio redevelopment", "Director(s)": "Elisabetta Bianchi", "Description": "Rescue excavation during public square reconstruction", "lat": 41.8770, "lng": 12.4760, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2007–2008", "Site / Project": "Via Galvani, Testaccio port area", "Director(s)": "BCAR site team", "Description": "Roman warehouses and dolia fragments recovered", "lat": 41.8730, "lng": 12.4780, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2009", "Site / Project": "Lungotevere Testaccio infrastructure trenching", "Director(s)": "Local BCAR team", "Description": "Urban utility work, archaeological monitoring", "lat": 41.8760, "lng": 12.4700, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2010–2012", "Site / Project": "S. Maria del Priorato", "Director(s)": "Rita Volpe, Sabina Zeggio", "Description": "Survey in the complex linked to Knights of Malta", "lat": 41.8860, "lng": 12.4830, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2013", "Site / Project": "Piazza dell’Emporio excavation", "Director(s)": "Leonida Pelagalli", "Description": "Layers of Roman port infrastructure unearthed", "lat": 41.8740, "lng": 12.4730, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2016", "Site / Project": "Via Marmorata—archaeological test trenches", "Director(s)": "BCAR rapid intervention unit", "Description": "Traces of opus reticulatum and drainage uncovered", "lat": 41.8780, "lng": 12.4770, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2020", "Site / Project": "Re-examination of Monte Testaccio sections", "Director(s)": "BCAR Testaccio team", "Description": "Reanalysis of amphora layers and trade material", "lat": 41.8755, "lng": 12.4755, "municipio": "Municipio Roma VIII"}
+                ]
+            },
+            "Regione V – Esquilino": {
+                coords: [41.9000, 12.5000], // Termini Station area
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "Via Giolitti—Hotel excavation", "Director(s)": "Elisabetta Bianchi", "Description": "Roman insula wall segments discovered", "lat": 41.8990, "lng": 12.5020, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2002–2003", "Site / Project": "Piazza Vittorio—urban dig", "Director(s)": "Fabrizio Marra", "Description": "Stratigraphy in central garden and portico area", "lat": 41.8960, "lng": 12.5030, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2005", "Site / Project": "Via Carlo Alberto infrastructure trench", "Director(s)": "BCAR urban team", "Description": "Rescue dig along modern pipeline", "lat": 41.8970, "lng": 12.5010, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2006–2007", "Site / Project": "Via Merulana tomb finds", "Director(s)": "Marina Mattei", "Description": "Funerary monuments and burial urns excavated", "lat": 41.8900, "lng": 12.5080, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2009", "Site / Project": "Underground cistern near Piazza Dante", "Director(s)": "Rossella Leone", "Description": "Documentation of vaulted water system", "lat": 41.8975, "lng": 12.5040, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2011", "Site / Project": "Porta Maggiore drainage work", "Director(s)": "Gian Luca Zanzi", "Description": "Substructure and sewer trench rescue archaeology", "lat": 41.8950, "lng": 12.5180, "municipio": "Municipio Roma V"},
+                    {"Year(s)": "2013–2014", "Site / Project": "Via di S. Croce in Gerusalemme interventions", "Director(s)": "Regional BCAR office", "Description": "Stratified Roman-Byzantine levels recorded", "lat": 41.8940, "lng": 12.5150, "municipio": "Municipio Roma VII"},
+                    {"Year(s)": "2015", "Site / Project": "Villa under Via dello Statuto", "Director(s)": "Piero Sebastiani del Grande", "Description": "Mosaic fragments and wall fresco found in situ", "lat": 41.8980, "lng": 12.5050, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2018", "Site / Project": "Via Principe Eugenio excavations", "Director(s)": "Roberto Ragione", "Description": "Sequence of housing and road surfaces documented", "lat": 41.8955, "lng": 12.5090, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2021", "Site / Project": "Via Napoleone III emergency dig", "Director(s)": "Rossella Leone", "Description": "Collapse exposed stratigraphy in residential zone", "lat": 41.9010, "lng": 12.4970, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione VI – Prenestina": {
+                coords: [41.8950, 12.5250], // near Porta Maggiore
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "Via Prenestina early survey", "Director(s)": "BCAR regional archaeologists", "Description": "Roadside tombs and late imperial reuse", "lat": 41.8900, "lng": 12.5300, "municipio": "Municipio Roma V"},
+                    {"Year(s)": "2004", "Site / Project": "Tomb group near Via Olevano Romano", "Director(s)": "Rossella Leone, Gian Luca Zanzi", "Description": "Inhumation graves and funerary inscriptions", "lat": 41.8880, "lng": 12.5350, "municipio": "Municipio Roma VI"},
+                    {"Year(s)": "2005", "Site / Project": "Via Casilina housing project dig", "Director(s)": "Roberto Ragione", "Description": "Domestic Roman and medieval layers", "lat": 41.8850, "lng": 12.5400, "municipio": "Municipio Roma VII"},
+                    {"Year(s)": "2007", "Site / Project": "Via Prenestina Nuova—emergency sewer trench", "Director(s)": "Elisabetta Bianchi", "Description": "Severely eroded foundations and aqueduct remains", "lat": 41.8920, "lng": 12.5280, "municipio": "Municipio Roma V"},
+                    {"Year(s)": "2009–2010", "Site / Project": "Villa rustica near Torre Spaccata", "Director(s)": "BCAR rapid unit", "Description": "Farming estate components found near edge of Municipio VI", "lat": 41.8700, "lng": 12.5700, "municipio": "Municipio Roma VI"},
+                    {"Year(s)": "2011", "Site / Project": "Parco di Centocelle – archaeological monitoring", "Director(s)": "Regional BCAR surveyors", "Description": "Pre-Roman hut floors discovered during path construction", "lat": 41.8780, "lng": 12.5600, "municipio": "Municipio Roma VII"},
+                    {"Year(s)": "2014", "Site / Project": "Metro C adjacent excavation", "Director(s)": "Diego Blanco", "Description": "Multiple burials, pottery clusters, and roof tiles documented", "lat": 41.8800, "lng": 12.5500, "municipio": "Municipio Roma VI"},
+                    {"Year(s)": "2017", "Site / Project": "Via dei Gordiani urban excavations", "Director(s)": "Sebastiani Del Grande, Leone", "Description": "Layers of suburban housing surveyed and drawn", "lat": 41.8900, "lng": 12.5380, "municipio": "Municipio Roma V"},
+                    {"Year(s)": "2019", "Site / Project": "Colombario of Via Olevano Romano", "Director(s)": "Ragione, Leone, Zanzi", "Description": "Large columbarium structure, full photographic and plan record", "lat": 41.8890, "lng": 12.5340, "municipio": "Municipio Roma VI"},
+                    {"Year(s)": "2022", "Site / Project": "Via Casilina school expansion dig", "Director(s)": "Zanzi, Leone", "Description": "Pre-existing foundations and terracing remnants excavated", "lat": 41.8840, "lng": 12.5420, "municipio": "Municipio Roma VII"}
+                ]
+            },
+            "Regione VII – Trastevere / Gianicolo": {
+                coords: [41.8890, 12.4780], // Santa Maria in Trastevere
+                sites: [
+                    {"Year(s)": "2001–2003", "Site / Project": "Via della Lungaretta rescue digs", "Director(s)": "BCAR team", "Description": "Roman insula remains and domestic structures", "lat": 41.8910, "lng": 12.4730, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2004", "Site / Project": "Area near Porta Portese", "Director(s)": "Roberto Ragione", "Description": "Tomb clusters and funerary deposits", "lat": 41.8850, "lng": 12.4750, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2006–2008", "Site / Project": "San Cosimato hospital renovations", "Director(s)": "Elisabetta Bianchi", "Description": "Excavations under hospital courtyard", "lat": 41.8870, "lng": 12.4700, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2009", "Site / Project": "Gianicolo hill survey", "Director(s)": "Local BCAR unit", "Description": "Surface survey and minor test trenches", "lat": 41.8880, "lng": 12.4650, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2011–2012", "Site / Project": "Via San Francesco a Ripa digs", "Director(s)": "Fabrizio Marra", "Description": "Urban excavation related to medieval layers", "lat": 41.8860, "lng": 12.4760, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2013", "Site / Project": "Ponte Sublicio bridge repairs", "Director(s)": "BCAR team", "Description": "Rescue archaeology during bridge stabilization", "lat": 41.8800, "lng": 12.4750, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2015–2016", "Site / Project": "Lungotevere Ripa construction", "Director(s)": "Rossella Leone", "Description": "Roman river embankment remains uncovered", "lat": 41.8790, "lng": 12.4700, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2018", "Site / Project": "Via dei Genovesi housing project", "Director(s)": "Marina Mattei", "Description": "Roman domus features found", "lat": 41.8895, "lng": 12.4740, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2020", "Site / Project": "Porta San Pancrazio area monitoring", "Director(s)": "Regional BCAR survey", "Description": "Defensive wall remnants documented", "lat": 41.8920, "lng": 12.4670, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2022", "Site / Project": "Trastevere Metro C station excavation", "Director(s)": "Metro C Archaeological Unit", "Description": "Large stratified Roman levels encountered", "lat": 41.8900, "lng": 12.4785, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione VIII – Testaccio / Ostiense": {
+                coords: [41.8750, 12.4800], // Piramide Cestia
+                sites: [
+                    {"Year(s)": "2002", "Site / Project": "Via B. Brin infrastructure dig", "Director(s)": "BCAR rapid unit", "Description": "Port warehouses and amphora shards", "lat": 41.8720, "lng": 12.4820, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2004–2006", "Site / Project": "Via Marmorata urban excavation", "Director(s)": "Rita Volpe, Marco Milanese", "Description": "Late Republican housing remains", "lat": 41.8780, "lng": 12.4770, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2007", "Site / Project": "Porta San Paolo adjacent survey", "Director(s)": "Elisabetta Bianchi", "Description": "Roman aqueduct segment located", "lat": 41.8760, "lng": 12.4810, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2009–2011", "Site / Project": "Monte Testaccio reexcavation", "Director(s)": "Leonida Pelagalli", "Description": "Amphora mound stratigraphy reassessed", "lat": 41.8755, "lng": 12.4755, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2013", "Site / Project": "Via Ostiense maintenance works", "Director(s)": "Local BCAR team", "Description": "Excavation of aqueduct and road layers", "lat": 41.8700, "lng": 12.4850, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2015", "Site / Project": "Piazza di Porta San Paolo digs", "Director(s)": "Rossella Leone", "Description": "Defensive structures and roads identified", "lat": 41.8765, "lng": 12.4805, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2017", "Site / Project": "Città della Scienza foundation", "Director(s)": "BCAR archaeological office", "Description": "Stratigraphic test pits in planned development zone", "lat": 41.8680, "lng": 12.4780, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2019", "Site / Project": "Via Francesco Passino digs", "Director(s)": "Regional BCAR survey", "Description": "Late antique residential phases recovered", "lat": 41.8730, "lng": 12.4790, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2021", "Site / Project": "Testaccio market area restoration", "Director(s)": "Marina Mattei", "Description": "Archaeological monitoring of renovations", "lat": 41.8770, "lng": 12.4780, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2023", "Site / Project": "Excavation at former slaughterhouse", "Director(s)": "Metro C Archaeological Unit", "Description": "Roman and medieval occupation layers documented", "lat": 41.8745, "lng": 12.4760, "municipio": "Municipio Roma VIII"}
+                ]
+            },
+            "Regione IX – San Saba / Aventino": {
+                coords: [41.8800, 12.4900], // San Saba Basilica
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "San Saba basilica complex survey", "Director(s)": "BCAR regional team", "Description": "Early Christian phases documented", "lat": 41.8810, "lng": 12.4910, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2003–2004", "Site / Project": "Aventino Hill test trenches", "Director(s)": "Rita Volpe", "Description": "Roman domestic architecture and tombs", "lat": 41.8840, "lng": 12.4850, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2006", "Site / Project": "Via di S. Saba minor excavations", "Director(s)": "Local BCAR unit", "Description": "Ceramic scatter and foundation remains", "lat": 41.8805, "lng": 12.4905, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2008", "Site / Project": "San Saba necropolis rescue excavation", "Director(s)": "Fabrizio Marra", "Description": "Funerary structures and grave goods", "lat": 41.8815, "lng": 12.4920, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2011", "Site / Project": "Piazza di Porta San Saba renovation", "Director(s)": "BCAR urban survey team", "Description": "Foundations of late antique building", "lat": 41.8790, "lng": 12.4890, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2013", "Site / Project": "Aventino garden restructuring dig", "Director(s)": "Regional BCAR", "Description": "Garden terrace walls and water features", "lat": 41.8830, "lng": 12.4860, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2015", "Site / Project": "San Saba wall conservation", "Director(s)": "Marina Mattei", "Description": "Stabilization of Roman masonry", "lat": 41.8800, "lng": 12.4915, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2017", "Site / Project": "Porta San Saba roadworks monitoring", "Director(s)": "Local BCAR unit", "Description": "Urban stratigraphy recording", "lat": 41.8785, "lng": 12.4885, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2019", "Site / Project": "Minor test excavation near Porta San Saba", "Director(s)": "BCAR rapid intervention unit", "Description": "Pottery assemblages and foundation cuts", "lat": 41.8795, "lng": 12.4895, "municipio": "Municipio Roma I"},
+                    {"Year(s)": "2021", "Site / Project": "San Saba water cistern excavation", "Director(s)": "Rossella Leone", "Description": "Hydraulic structure unearthed", "lat": 41.8810, "lng": 12.4900, "municipio": "Municipio Roma I"}
+                ]
+            },
+            "Regione X – Portuense": {
+                coords: [41.8600, 12.4600], // Ponte Marconi area
+                sites: [
+                    {"Year(s)": "2002", "Site / Project": "Via Portuense infrastructure survey", "Director(s)": "BCAR field team", "Description": "Early Roman roads and drainage", "lat": 41.8620, "lng": 12.4650, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2004–2005", "Site / Project": "Villa rustica remains near Portuense", "Director(s)": "Roberto Ragione", "Description": "Rural farmstead excavation", "lat": 41.8550, "lng": 12.4550, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2007", "Site / Project": "Portuense aqueduct corridor digs", "Director(s)": "Elisabetta Bianchi", "Description": "Repairs and surveys of Roman aqueduct", "lat": 41.8630, "lng": 12.4680, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2010", "Site / Project": "Via Portuense roadworks excavation", "Director(s)": "Local BCAR team", "Description": "Pottery and building foundations documented", "lat": 41.8610, "lng": 12.4620, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2013–2014", "Site / Project": "Parco della Vittoria test trenches", "Director(s)": "Regional BCAR", "Description": "Suburban villa remains", "lat": 41.8700, "lng": 12.4500, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2016", "Site / Project": "Via Portuense modern works monitoring", "Director(s)": "BCAR rapid unit", "Description": "Archaeological monitoring during pipeline works", "lat": 41.8605, "lng": 12.4605, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2018", "Site / Project": "Portuense necropolis survey", "Director(s)": "Rossella Leone", "Description": "Tomb groups and funerary artifacts", "lat": 41.8580, "lng": 12.4580, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2020", "Site / Project": "Industrial area redevelopment digs", "Director(s)": "Marina Mattei", "Description": "Roman period industrial installations uncovered", "lat": 41.8570, "lng": 12.4630, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2022", "Site / Project": "Via Portuense minor excavations", "Director(s)": "Local BCAR team", "Description": "Wall foundations and terracing remains", "lat": 41.8615, "lng": 12.4615, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2024", "Site / Project": "Portuense road expansion rescue excavation", "Director(s)": "BCAR field team", "Description": "Stratified layers documented", "lat": 41.8600, "lng": 12.4600, "municipio": "Municipio Roma XI"}
+                ]
+            },
+            "Regione XI – San Paolo / Ostiense": {
+                coords: [41.8650, 12.4750], // Basilica San Paolo fuori le Mura
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "Basilica di San Paolo survey", "Director(s)": "BCAR regional team", "Description": "Early Christian phases and mosaics documented", "lat": 41.8640, "lng": 12.4750, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2004", "Site / Project": "Via Ostiense urban digs", "Director(s)": "Elisabetta Bianchi", "Description": "Roman insula remains uncovered", "lat": 41.8700, "lng": 12.4800, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2007", "Site / Project": "Metro B station archaeological work", "Director(s)": "Local BCAR team", "Description": "Rescue archaeology during station construction", "lat": 41.8680, "lng": 12.4780, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2010", "Site / Project": "San Paolo basilica adjacent digs", "Director(s)": "Fabrizio Marra", "Description": "Funerary and foundation evidence", "lat": 41.8645, "lng": 12.4745, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2013", "Site / Project": "Via Cristoforo Colombo excavations", "Director(s)": "Regional BCAR", "Description": "Late antique layers recorded", "lat": 41.8550, "lng": 12.4850, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2016", "Site / Project": "Via Laurentina test trenches", "Director(s)": "BCAR rapid intervention unit", "Description": "Suburban domestic remains found", "lat": 41.8500, "lng": 12.4900, "municipio": "Municipio Roma IX"},
+                    {"Year(s)": "2018", "Site / Project": "Via Ostiense industrial area digs", "Director(s)": "Marina Mattei", "Description": "Ancient workshops and furnaces uncovered", "lat": 41.8690, "lng": 12.4770, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2020", "Site / Project": "Via delle Sette Chiese monitoring", "Director(s)": "Rossella Leone", "Description": "Minor stratigraphy during roadworks", "lat": 41.8600, "lng": 12.4800, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2022", "Site / Project": "Basilica roof repairs and survey", "Director(s)": "Local BCAR team", "Description": "Structural conservation and documentation", "lat": 41.8635, "lng": 12.4755, "municipio": "Municipio Roma VIII"},
+                    {"Year(s)": "2025", "Site / Project": "Via Ostiense corridor excavation", "Director(s)": "BCAR field office", "Description": "Roman road and infrastructure layers exposed", "lat": 41.8710, "lng": 12.4810, "municipio": "Municipio Roma VIII"}
+                ]
+            },
+            "Regione XII – Gianicolense": {
+                coords: [41.8800, 12.4600], // Monteverde Vecchio
+                sites: [
+                    {"Year(s)": "2001", "Site / Project": "Villa rustica near Gianicolo hill", "Director(s)": "BCAR regional archaeologists", "Description": "Rural villa foundations and mosaics", "lat": 41.8850, "lng": 12.4620, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2004–2006", "Site / Project": "Monteverde urban renewal digs", "Director(s)": "Elisabetta Bianchi", "Description": "Domestic structures and water cisterns", "lat": 41.8780, "lng": 12.4550, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2008", "Site / Project": "Gianicolo park archaeological survey", "Director(s)": "Regional BCAR team", "Description": "Surface finds and mapping", "lat": 41.8820, "lng": 12.4600, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2011", "Site / Project": "Via Portuense minor rescue excavations", "Director(s)": "Local BCAR unit", "Description": "Wall foundations and pottery assemblages", "lat": 41.8750, "lng": 12.4500, "municipio": "Municipio Roma XI"},
+                    {"Year(s)": "2014", "Site / Project": "Villa adjacent to Via del Forte", "Director(s)": "Roberto Ragione", "Description": "Residential complex foundations documented", "lat": 41.8770, "lng": 12.4580, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2017", "Site / Project": "Gianicolo church renovation digs", "Director(s)": "Marina Mattei", "Description": "Excavation of earlier religious structures", "lat": 41.8805, "lng": 12.4610, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2019", "Site / Project": "Via Vitellia survey and excavation", "Director(s)": "Rossella Leone", "Description": "Late antique domestic remains", "lat": 41.8790, "lng": 12.4590, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2021", "Site / Project": "Urban redevelopment rescue dig", "Director(s)": "BCAR rapid intervention unit", "Description": "Multi-period layers discovered", "lat": 41.8760, "lng": 12.4570, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2023", "Site / Project": "Monteverde cemetery area excavation", "Director(s)": "Local BCAR team", "Description": "Funerary monuments and grave goods", "lat": 41.8755, "lng": 12.4565, "municipio": "Municipio Roma XII"},
+                    {"Year(s)": "2025", "Site / Project": "Via Portuense traffic expansion digs", "Director(s)": "BCAR field team", "Description": "Foundations and drainage infrastructure", "lat": 41.8740, "lng": 12.4550, "municipio": "Municipio Roma XI"}
+                ]
+            }
+        };
+
+        // GeoJSON data for Rome's 15 Municipi.
+        // These coordinates are manually derived approximations to represent the shapes
+        // seen in the provided image, ensuring non-overlapping and more realistic borders.
+        const romeMunicipiGeoJSON = {
+            "type": "FeatureCollection",
+            "features": [
+                { "type": "Feature", "properties": { "name": "Municipio Roma I", "number": "1" }, "geometry": { "type": "Polygon", "coordinates": [[[12.466, 41.905], [12.498, 41.907], [12.508, 41.898], [12.508, 41.880], [12.490, 41.879], [12.470, 41.880], [12.466, 41.885], [12.466, 41.905]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma II", "number": "2" }, "geometry": { "type": "Polygon", "coordinates": [[[12.498, 41.907], [12.518, 41.916], [12.520, 41.910], [12.510, 41.900], [12.508, 41.898], [12.498, 41.907]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma III", "number": "3" }, "geometry": { "type": "Polygon", "coordinates": [[[12.520, 41.910], [12.540, 41.920], [12.545, 41.910], [12.530, 41.900], [12.520, 41.910]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma IV", "number": "4" }, "geometry": { "type": "Polygon", "coordinates": [[[12.530, 41.900], [12.550, 41.910], [12.555, 41.900], [12.540, 41.890], [12.530, 41.900]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma V", "number": "5" }, "geometry": { "type": "Polygon", "coordinates": [[[12.508, 41.880], [12.530, 41.890], [12.540, 41.880], [12.520, 41.870], [12.508, 41.880]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma VI", "number": "6" }, "geometry": { "type": "Polygon", "coordinates": [[[12.540, 41.880], [12.560, 41.890], [12.570, 41.880], [12.550, 41.870], [12.540, 41.880]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma VII", "number": "7" }, "geometry": { "type": "Polygon", "coordinates": [[[12.520, 41.870], [12.540, 41.880], [12.550, 41.870], [12.530, 41.860], [12.520, 41.870]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma VIII", "number": "8" }, "geometry": { "type": "Polygon", "coordinates": [[[12.490, 41.879], [12.508, 41.880], [12.520, 41.870], [12.500, 41.850], [12.480, 41.850], [12.490, 41.879]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma IX", "number": "9" }, "geometry": { "type": "Polygon", "coordinates": [[[12.480, 41.850], [12.500, 41.850], [12.510, 41.840], [12.490, 41.830], [12.470, 41.840], [12.480, 41.850]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma X", "number": "10" }, "geometry": { "type": "Polygon", "coordinates": [[[12.250, 41.750], [12.350, 41.750], [12.350, 41.650], [12.250, 41.650], [12.250, 41.750]]] } }, // Ostia area
+                { "type": "Feature", "properties": { "name": "Municipio Roma XI", "number": "11" }, "geometry": { "type": "Polygon", "coordinates": [[[12.440, 41.875], [12.460, 41.875], [12.470, 41.860], [12.460, 41.850], [12.440, 41.850], [12.440, 41.875]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma XII", "number": "12" }, "geometry": { "type": "Polygon", "coordinates": [[[12.430, 41.890], [12.460, 41.890], [12.466, 41.885], [12.440, 41.875], [12.430, 41.890]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma XIII", "number": "13" }, "geometry": { "type": "Polygon", "coordinates": [[[12.400, 41.900], [12.430, 41.900], [12.430, 41.890], [12.400, 41.890], [12.400, 41.900]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma XIV", "number": "14" }, "geometry": { "type": "Polygon", "coordinates": [[[12.380, 41.920], [12.420, 41.920], [12.420, 41.900], [12.380, 41.900], [12.380, 41.920]]] } },
+                { "type": "Feature", "properties": { "name": "Municipio Roma XV", "number": "15" }, "geometry": { "type": "Polygon", "coordinates": [[[12.400, 41.930], [12.450, 41.930], [12.450, 41.920], [12.400, 41.920], [12.400, 41.930]]] } }
+            ]
+        };
+
+        // Helper function to group sites by Municipio
+        const sitesByMunicipio = {};
+        for (const regioneName in archaeologicalData) {
+            archaeologicalData[regioneName].sites.forEach(site => {
+                const municipio = site.municipio;
+                if (municipio) {
+                    if (!sitesByMunicipio[municipio]) {
+                        sitesByMunicipio[municipio] = [];
+                    }
+                    sitesByMunicipio[municipio].push(site);
+                }
+            });
+        }
+
+        // Get references to the main DOM elements
+        const mapContainer = document.getElementById('mapid');
+        const backButton = document.getElementById('back-button');
+        const digDetails = document.getElementById('dig-details');
+
+        let currentMap = null; // Variable to hold the Leaflet map instance
+        let markersLayer = new L.LayerGroup(); // Layer group for archaeological site markers
+        let municipiLayer = null; // Layer for the GeoJSON Municipi
+
+        /**
+         * Initializes the main Leaflet map for Rome, displaying Municipi outlines.
+         */
+        function initializeFullMap() {
+            // If a map instance already exists, remove it to re-initialize cleanly
+            if (currentMap) {
+                currentMap.remove();
+            }
+
+            // Initialize the map centered on Rome with a suitable zoom level
+            currentMap = L.map('mapid').setView([41.8902, 12.4922], 12); // Centered on Rome, zoom level 12
+
+            // Add OpenStreetMap tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(currentMap);
+
+            // Add the GeoJSON layer for Municipi
+            municipiLayer = L.geoJSON(romeMunicipiGeoJSON, {
+                style: function (feature) {
+                    return {
+                        color: '#2e7d32',    // Border color
+                        weight: 2,           // Border thickness
+                        fillColor: '#4CAF50', // Fill color
+                        fillOpacity: 0.3     // Semi-transparent fill
+                    };
+                },
+                onEachFeature: function (feature, layer) {
+                    // Bind a tooltip with the Municipio name
+                    layer.bindTooltip(feature.properties.name, { permanent: false, direction: 'center' });
+
+                    // Add click event listener to each Municipio polygon
+                    layer.on('click', function (e) {
+                        showMunicipioSites(feature.properties.name);
+                    });
+
+                    // Add hover effects
+                    layer.on('mouseover', function (e) {
+                        layer.setStyle({
+                            fillColor: '#66bb6a', // Lighter green on hover
+                            weight: 3,
+                            fillOpacity: 0.5
+                        });
+                    });
+                    layer.on('mouseout', function (e) {
+                        municipiLayer.resetStyle(layer); // Reset to default style on mouse out
+                    });
+                }
+            }).addTo(currentMap);
+
+            // Add the markers layer group to the map (initially empty)
+            markersLayer.addTo(currentMap);
+
+            // Hide the back button
+            backButton.classList.add('hidden');
+            digDetails.style.display = 'none'; // Hide dig details
+            digDetails.innerHTML = ''; // Clear dig details
+        }
+
+        /**
+         * Displays archaeological sites for a specific Municipio.
+         * Zooms to the Municipio and adds markers for its sites.
+         * @param {string} municipioName - The name of the Municipio to display sites for.
+         */
+        function showMunicipioSites(municipioName) {
+            // Remove existing markers from the map
+            markersLayer.clearLayers();
+
+            const sites = sitesByMunicipio[municipioName] || [];
+
+            // Find the clicked Municipio's layer to get its bounds
+            let clickedMunicipioLayer = null;
+            municipiLayer.eachLayer(function(layer) {
+                if (layer.feature.properties.name === municipioName) {
+                    clickedMunicipioLayer = layer;
+                }
+            });
+
+            if (clickedMunicipioLayer) {
+                // Fit map view to the bounds of the clicked Municipio
+                currentMap.flyToBounds(clickedMunicipioLayer.getBounds(), {
+                    padding: L.point(50, 50) // Add some padding around the bounds
+                });
+            } else {
+                console.warn(`Municipio layer for "${municipioName}" not found.`);
+                // Fallback: if Municipio layer not found, try to center on a general Rome area
+                currentMap.flyTo([41.8902, 12.4922], 12);
+            }
+
+            // Add markers for each archaeological site in the selected Municipio
+            if (sites.length > 0) {
+                sites.forEach(dig => {
+                    // Check if the dig has valid coordinates
+                    if (dig.lat && dig.lng) {
+                        const marker = L.marker([dig.lat, dig.lng]);
+                        // Create a popup for the marker with basic info
+                        marker.bindPopup(`<b>${dig['Site / Project']}</b><br>${dig['Year(s)']}`);
+
+                        // Add click event to marker to show full details below the map
+                        marker.on('click', () => showDigDetails(dig));
+                        markersLayer.addLayer(marker); // Add marker to the markers layer group
+                    }
+                });
+            } else {
+                // If no sites found for this Municipio, display a message (optional, could be a toast)
+                console.log(`No archaeological sites mapped to ${municipioName} in your data.`);
+            }
+
+
+            // Show the back button
+            backButton.classList.remove('hidden');
+            digDetails.style.display = 'none'; // Hide dig details initially when zooming
+            digDetails.innerHTML = ''; // Clear dig details
+        }
+
+        /**
+         * Displays the full details of a specific archaeological dig.
+         * @param {object} dig - The archaeological dig object containing its details.
+         */
+        function showDigDetails(dig) {
+            // Populate the dig details section with comprehensive information
+            digDetails.innerHTML = `
+                <h3 class="text-xl font-bold text-green-800 mb-3">${dig['Site / Project']}</h3>
+                <p class="text-gray-700 mb-1"><strong>Year(s):</strong> ${dig['Year(s)']}</p>
+                <p class="text-gray-700 mb-1"><strong>Director(s):</strong> ${dig['Director(s)']}</p>
+                <p class="text-gray-700"><strong>Description:</strong> ${dig.Description}</p>
+                <p class="text-gray-700"><strong>Municipio:</strong> ${dig.municipio || 'N/A'}</p>
+            `;
+            digDetails.style.display = 'block'; // Make the dig details visible
+            digDetails.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Scroll to the details for better UX
+        }
+
+        // Add event listener to the back button to return to the full map
+        backButton.addEventListener('click', initializeFullMap);
+
+        // Call the initialization function when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', initializeFullMap);
+    </script>
+</body>
+</html>
